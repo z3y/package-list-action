@@ -34,6 +34,7 @@ namespace VRC.PackageManagement.Automation
 
         const string PackageManifestFilename = "package.json";
         const string WebPageIndexFilename = "index.html";
+        const string WebPageDownloadsFolder = "downloads";
         const string VRCAgent = "VCCBootstrap/1.0";
         const string PackageListingPublishFilename = "index.json";
         const string WebPageAppFilename = "app.js";
@@ -184,7 +185,10 @@ namespace VRC.PackageManagement.Automation
                         continue;
                     }
                     
-                    var manifest = await HashZipAndReturnManifest(url);
+                    var baseUrl = listSource.url;
+                    if (baseUrl.EndsWith("index.json"))
+                        baseUrl = baseUrl.Substring(0, baseUrl.Length - "index.json".Length);
+                    var manifest = await HashZipAndReturnManifest(url, baseUrl);
                     if (manifest == null)
                     {
                         Serilog.Log.Information($"Could not find manifest in zip file {url}, skipping.");
@@ -356,7 +360,7 @@ namespace VRC.PackageManagement.Automation
             return result;
         }
 
-        async Task<VRCPackageManifest> HashZipAndReturnManifest(string url)
+        async Task<VRCPackageManifest> HashZipAndReturnManifest(string url, string listingBaseUrl)
         {
             using (var response = await Http.GetAsync(url))
             {
@@ -367,13 +371,25 @@ namespace VRC.PackageManagement.Automation
 
                 // Get manifest or return null
                 var bytes = await response.Content.ReadAsByteArrayAsync();
-                var manifestBytes = GetFileFromZip(bytes, PackageManifestFilename);
+                var manifestBytes = GetFileFromZip(bytes, PackageManifestFilename, out string needsRepackagingOfRootFolder);
                 if (manifestBytes == null) return null;
                 
                 var manifestString = Encoding.UTF8.GetString(manifestBytes);
                 var manifest = VRCPackageManifest.FromJson(manifestString);
                 var hash = GetHashForBytes(bytes);
                 manifest.zipSHA256 = hash; // putting the hash in here for now
+
+                if (needsRepackagingOfRootFolder != null)
+                {
+                    var rewrittenFileName = $"{manifest.name}_{manifest.version}.zip";
+                    var newUrl = $"{listingBaseUrl}/{WebPageDownloadsFolder}/{rewrittenFileName}";
+                    Serilog.Log.Information($"Rewriting source-style zip file '{url}' to '{url}'...");
+                    url = newUrl;
+                    if (!Directory.Exists(WebPageSourcePath / WebPageDownloadsFolder))
+                        Directory.CreateDirectory(WebPageSourcePath / WebPageDownloadsFolder);
+                    using (var rewrittenFile = new FileStream(WebPageSourcePath / WebPageDownloadsFolder / rewrittenFileName, System.IO.FileMode.Create))
+                        RewriteZipFileWithRootFolder(bytes, needsRepackagingOfRootFolder, rewrittenFile);
+                }
 
                 // Workaround for bug of vpm-resolver
                 // see: https://github.com/vrchat-community/creator-companion/issues/226
@@ -387,11 +403,25 @@ namespace VRC.PackageManagement.Automation
             }
         }
         
-        static byte[] GetFileFromZip(byte[] bytes, string fileName)
+        static byte[] GetFileFromZip(byte[] bytes, string fileName, out string needsRepackagingOfRootFolder)
         {
+            needsRepackagingOfRootFolder = null;
             byte[] ret = null;
             var stream = new MemoryStream(bytes);
             ZipFile zf = new ZipFile(stream);
+
+            if (zf.Count > 0)
+            {
+                var rootFolderCandidates = zf.Cast<ZipEntry>().Where(e => e.Name.Count(c => c == '/') == 1 && e.Name.EndsWith("/")).ToList();
+                if (rootFolderCandidates.Count == 1)
+                {
+                    // if the zip only contains a single directory, we need to search in that directory (and then repackage it to be correct for VPM)
+                    var rootFolder = rootFolderCandidates[0];
+                    fileName = rootFolder.Name + fileName;
+                    needsRepackagingOfRootFolder = rootFolder.Name;
+                }
+            }
+
             ZipEntry ze = zf.GetEntry(fileName);
 
             if (ze != null)
@@ -402,6 +432,36 @@ namespace VRC.PackageManagement.Automation
             }
 
             return ret;
+        }
+
+        static byte[] rewriteBuffer = new byte[4096];
+        static void RewriteZipFileWithRootFolder(byte[] input, string rootFolder, Stream output)
+        {
+            using (var stream = new MemoryStream(input))
+            using (ZipFile zf = new ZipFile(stream))
+            using (var zipOut = new ZipOutputStream(output))
+            {
+                zipOut.SetLevel(7);
+
+                foreach (ZipEntry entry in zf)
+                {
+                    if (entry.Name == rootFolder) continue;
+                    if (!entry.IsFile) continue;
+
+                    var newEntry = new ZipEntry(entry.Name.Substring(rootFolder.Length))
+                    {
+                        DosTime = entry.DosTime,
+                        DateTime = entry.DateTime,
+                        Flags = entry.Flags,
+                        IsUnicodeText = entry.IsUnicodeText,
+                        Size = entry.Size,
+                    };
+                    zipOut.PutNextEntry(newEntry);
+                    using (var sourceStream = zf.GetInputStream(entry))
+                        ICSharpCode.SharpZipLib.Core.StreamUtils.Copy(sourceStream, zipOut, rewriteBuffer);
+                    zipOut.CloseEntry();
+                }
+            }
         }
 
         static string GetHashForBytes(byte[] bytes)
