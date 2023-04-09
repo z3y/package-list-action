@@ -256,6 +256,7 @@ namespace VRC.PackageManagement.Automation
                         Name = p.author?.name,
                         Url = p.author?.url,
                     },
+                    ListingUrl = listingInfo.Url,
                     ZipUrl = p.url,
                     License = p.license,
                     LicenseUrl = p.licensesUrl,
