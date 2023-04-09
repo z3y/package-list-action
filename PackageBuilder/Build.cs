@@ -161,9 +161,16 @@ namespace VRC.PackageManagement.Automation
                 // Add GitHub repos if included
                 if (listSource.githubRepos != null && listSource.githubRepos.Count > 0)
                 {
-                    foreach (string ownerSlashName in listSource.githubRepos)
+                    foreach (string ownerSlashNameRaw in listSource.githubRepos)
                     {
-                        possibleReleaseUrls.AddRange(await GetReleaseZipUrlsFromGitHubRepo(ownerSlashName));
+                        var fromSource = false;
+                        var ownerSlashName = ownerSlashNameRaw;
+                        if (ownerSlashName.StartsWith("source:"))
+                        {
+                            fromSource = true;
+                            ownerSlashName = ownerSlashName.Substring("source:".Length);
+                        }
+                        possibleReleaseUrls.AddRange(await GetReleaseZipUrlsFromGitHubRepo(ownerSlashName, fromSource));
                     }
                 }
 
@@ -293,7 +300,7 @@ namespace VRC.PackageManagement.Automation
             }
         }
         
-        async Task<List<string>> GetReleaseZipUrlsFromGitHubRepo(string ownerSlashName)
+        async Task<List<string>> GetReleaseZipUrlsFromGitHubRepo(string ownerSlashName, bool fromSource)
         {
             // Split string into owner and repo, or skip if invalid.
             var parts = ownerSlashName.Split('/');
@@ -324,7 +331,10 @@ namespace VRC.PackageManagement.Automation
             
             foreach (Octokit.Release release in releases)
             {
-                result.AddRange(release.Assets.Where(asset => asset.Name.EndsWith(".zip")).Select(asset => asset.BrowserDownloadUrl));
+                if (fromSource)
+                    result.Add(release.ZipballUrl);
+                else
+                    result.AddRange(release.Assets.Where(asset => asset.Name.EndsWith(".zip")).Select(asset => asset.BrowserDownloadUrl));
             }
 
             return result;
