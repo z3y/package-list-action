@@ -188,6 +188,9 @@ namespace VRC.PackageManagement.Automation
                     var baseUrl = listSource.url;
                     if (baseUrl.EndsWith("index.json"))
                         baseUrl = baseUrl.Substring(0, baseUrl.Length - "index.json".Length);
+                    if (!baseUrl.EndsWith("/"))
+                        baseUrl += "/";
+
                     var manifest = await HashZipAndReturnManifest(url, baseUrl);
                     if (manifest == null)
                     {
@@ -381,14 +384,16 @@ namespace VRC.PackageManagement.Automation
 
                 if (needsRepackagingOfRootFolder != null)
                 {
+                    // if a zip file contains a root folder (e.g. from github source-style releases) then we need to rewrite it to be a valid package
+                    // we will host this package in a 'downloads' folder directly on the listing page
                     var rewrittenFileName = $"{manifest.name}_{manifest.version}.zip";
-                    var newUrl = $"{listingBaseUrl}/{WebPageDownloadsFolder}/{rewrittenFileName}";
-                    Serilog.Log.Information($"Rewriting source-style zip file '{url}' to '{url}'...");
-                    url = newUrl;
+                    Serilog.Log.Information($"Rewriting source-style zip file '{url}'...");
+                    url = $"{listingBaseUrl}{WebPageDownloadsFolder}/{rewrittenFileName}";
                     if (!Directory.Exists(WebPageSourcePath / WebPageDownloadsFolder))
                         Directory.CreateDirectory(WebPageSourcePath / WebPageDownloadsFolder);
                     using (var rewrittenFile = new FileStream(WebPageSourcePath / WebPageDownloadsFolder / rewrittenFileName, System.IO.FileMode.Create))
                         RewriteZipFileWithRootFolder(bytes, needsRepackagingOfRootFolder, rewrittenFile);
+                    Serilog.Log.Information($"Rewritten as '{rewrittenFileName}' to '{url}'!");
                 }
 
                 // Workaround for bug of vpm-resolver
