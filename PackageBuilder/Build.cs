@@ -454,7 +454,7 @@ namespace VRC.PackageManagement.Automation
                     if (entry.Name == rootFolder) continue;
                     if (!entry.IsFile) continue;
 
-                    if (entry.Name.Contains("/~") || entry.Name.Contains("~/") || entry.Name.Contains("\\~") || entry.Name.Contains("~\\"))
+                    if (entry.Name.Contains("/~") || entry.Name.Contains("~/") || entry.Name.Contains("\\~") || entry.Name.Contains("~\\") || entry.Name.StartsWith("~") || entry.Name.EndsWith("~"))
                     {
                         Serilog.Log.Warning($"  Skipping file '{entry.Name}' because it contains Unity ignore character (~)");
                         continue;
