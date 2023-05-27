@@ -454,6 +454,12 @@ namespace VRC.PackageManagement.Automation
                     if (entry.Name == rootFolder) continue;
                     if (!entry.IsFile) continue;
 
+                    if (entry.Name.Contains("/~") || entry.Name.Contains("~/") || entry.Name.Contains("\\~") || entry.Name.Contains("~\\"))
+                    {
+                        Serilog.Log.Warning($"  Skipping file '{entry.Name}' because it contains Unity ignore character (~)");
+                        continue;
+                    }
+
                     var newEntry = new ZipEntry(entry.Name.Substring(rootFolder.Length))
                     {
                         DosTime = entry.DosTime,
