@@ -232,7 +232,7 @@ namespace VRC.PackageManagement.Automation
                 var listingInfo = new {
                     Name = listSource.name,
                     Url = listSource.url,
-                    Description = listSource.description,
+                    Description = System.Web.HttpUtility.JavaScriptStringEncode(listSource.description),
                     InfoLink = new {
                         Text = listSource.infoLink?.text,
                         Url = listSource.infoLink?.url,
@@ -262,7 +262,7 @@ namespace VRC.PackageManagement.Automation
                     LicenseUrl = p.licensesUrl,
                     Keywords = p.keywords,
                     Type = GetPackageType(p),
-                    p.Description,
+                    Description = System.Web.HttpUtility.JavaScriptStringEncode(p.Description),
                     DisplayName = p.Title,
                     p.Version,
                     Dependencies = p.VPMDependencies.Select(dep => new {
