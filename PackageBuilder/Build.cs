@@ -380,8 +380,6 @@ namespace VRC.PackageManagement.Automation
                 
                 var manifestString = Encoding.UTF8.GetString(manifestBytes);
                 var manifest = VRCPackageManifest.FromJson(manifestString);
-                var hash = GetHashForBytes(bytes);
-                manifest.zipSHA256 = hash; // putting the hash in here for now
 
                 if (needsRepackagingOfRootFolder != null)
                 {
@@ -389,12 +387,25 @@ namespace VRC.PackageManagement.Automation
                     // we will host this package in a 'downloads' folder directly on the listing page
                     var rewrittenFileName = $"{manifest.name}_{manifest.version}.zip";
                     Serilog.Log.Information($"Rewriting source-style zip file '{url}'...");
+
                     url = $"{listingBaseUrl}{WebPageDownloadsFolder}/{rewrittenFileName}";
                     if (!Directory.Exists(WebPageSourcePath / WebPageDownloadsFolder))
                         Directory.CreateDirectory(WebPageSourcePath / WebPageDownloadsFolder);
-                    using (var rewrittenFile = new FileStream(WebPageSourcePath / WebPageDownloadsFolder / rewrittenFileName, System.IO.FileMode.Create))
-                        RewriteZipFileWithRootFolder(bytes, needsRepackagingOfRootFolder, rewrittenFile);
+
+                    var rewrittenFilePath = WebPageSourcePath / WebPageDownloadsFolder / rewrittenFileName;
+
+                    await using var rewrittenFile = File.Create(rewrittenFilePath);
+                    RewriteZipFileWithRootFolder(bytes, needsRepackagingOfRootFolder, rewrittenFile);
+
+                    var hash = GetHashForBytes(await File.ReadAllBytesAsync(rewrittenFilePath));
+                    manifest.zipSHA256 = hash;
+
                     Serilog.Log.Information($"Rewritten as '{rewrittenFileName}' to '{url}'!");
+                }
+                else
+                {
+                    var hash = GetHashForBytes(bytes);
+                    manifest.zipSHA256 = hash;
                 }
 
                 // Workaround for bug of vpm-resolver
